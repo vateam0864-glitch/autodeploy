@@ -1,0 +1,26 @@
+name: Auto Deploy to Laptop
+
+on:
+  push:
+    branches:
+      - main   # change to your branch name if needed
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Show repodir (debug)
+        run: pwd && ls -la
+
+      - name: Ensure docker is available
+        run: docker --version && docker compose version
+
+      - name: Build and deploy with docker-compose
+        run: |
+          # stop and remove existing containers (safe)
+          docker compose down || true
+          # build and start in background
+          docker compose up --build -d
