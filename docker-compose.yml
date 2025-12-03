@@ -1,0 +1,13 @@
+version: "3.8"
+services:
+  app1:
+    build: ./app1
+    ports:
+      - "5001:5001"
+    restart: unless-stopped
+
+  app2:
+    build: ./app2
+    ports:
+      - "5002:5002"
+    restart: unless-stopped
