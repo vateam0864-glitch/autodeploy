@@ -10,35 +10,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    # -------------------------------
-    # SETUP SSH KEY FOR GITHUB ACTIONS
-    # -------------------------------
-    - name: Add private key
-      run: |
-        mkdir -p ~/.ssh
-        echo "$SSH_PRIVATE_KEY" > ~/.ssh/github_actions_key
-        chmod 600 ~/.ssh/github_actions_key
-      env:
-        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      - name: Add private key
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/github_actions_key
+          chmod 600 ~/.ssh/github_actions_key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
 
-    # -------------------------------
-    # DISABLE STRICT HOST CHECK
-    # -------------------------------
-    - name: Disable strict host checking
-      run: |
-        echo -e "Host *\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+      - name: Disable strict host checking
+        run: |
+          echo -e "Host *\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
 
-    # -------------------------------
-    # SSH INTO YOUR LAPTOP (TAILSCALE)
-    # -------------------------------
-    - name: Deploy to laptop via SSH
-      run: |
-        ssh -i ~/.ssh/github_actions_key dani@${{ secrets.TAILSCALE_HOST }} << 'EOF'
-          cd ~/APPY
-          git pull
-          docker compose down || true
-          docker compose up --build -d
-EOF
+      - name: Deploy to laptop via SSH
+        run: |
+          ssh -i ~/.ssh/github_actions_key dani@${{ secrets.TAILSCALE_HOST }} << 'EOF'
+            cd ~/APPY
+            git pull
+            docker compose down || true
+            docker compose up --build -d
+          EOF
