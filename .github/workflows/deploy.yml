@@ -1,26 +1,34 @@
-name: Auto Deploy to Laptop
+name: Deploy via Tailscale SSH
 
 on:
   push:
-    branches:
-      - main   # change to your branch name if needed
+    branches: [ "main" ]
 
 jobs:
   deploy:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Show repodir (debug)
-        run: pwd && ls -la
+    - name: Add private key
+      run: |
+        mkdir -p ~/.ssh
+        echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+        chmod 600 ~/.ssh/id_ed25519
+      env:
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Ensure docker is available
-        run: docker --version && docker compose version
+    - name: Disable strict host checking
+      run: |
+        echo -e "Host *\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
 
-      - name: Build and deploy with docker-compose
-        run: |
-          # stop and remove existing containers (safe)
+    - name: Deploy via SSH over Tailscale
+      run: |
+        ssh -i ~/.ssh/id_ed25519 dani@${{ secrets.TAILSCALE_HOST }} << 'EOF'
+          cd ~/APPY
+          git pull
           docker compose down || true
-          # build and start in background
           docker compose up --build -d
+        EOF
