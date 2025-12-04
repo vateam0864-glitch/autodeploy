@@ -41,4 +41,4 @@ jobs:
           git pull
           docker compose down || true
           docker compose up --build -d
-        EOF
+EOF
