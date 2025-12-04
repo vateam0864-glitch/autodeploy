@@ -1,34 +1,20 @@
-name: Deploy via Tailscale SSH
+- name: Add private key
+  run: |
+    mkdir -p ~/.ssh
+    echo "$SSH_PRIVATE_KEY" > ~/.ssh/github_actions_key
+    chmod 600 ~/.ssh/github_actions_key
+  env:
+    SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
 
-on:
-  push:
-    branches: [ "main" ]
+- name: Disable strict host checking
+  run: |
+    echo -e "Host *\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Add private key
-      run: |
-        mkdir -p ~/.ssh
-        echo "$SSH_PRIVATE_KEY" > ~/.ssh/github_key
-        chmod 600 ~/.ssh/github_key
-      env:
-        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-
-    - name: Disable strict host checking
-      run: |
-        echo -e "Host *\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-
-    - name: Deploy to laptop via SSH
-      run: |
-        ssh -i ~/.ssh/github_key dani@${{ secrets.TAILSCALE_HOST }} << 'EOF'
-          cd ~/APPY
-          git pull
-          docker compose down || true
-          docker compose up --build -d
-        EOF
+- name: Deploy to laptop via SSH
+  run: |
+    ssh -i ~/.ssh/github_actions_key dani@${{ secrets.TAILSCALE_HOST }} << 'EOF'
+      cd ~/APPY
+      git pull
+      docker compose down || true
+      docker compose up --build -d
+EOF
