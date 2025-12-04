@@ -14,22 +14,102 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Add private key
+        id: add_key
         run: |
           mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/github_actions_key
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/github_actions_key
           chmod 600 ~/.ssh/github_actions_key
+          # Derive and show the public key so you can verify it is present on the remote host (logs show only the public key)
+          ssh-keygen -y -f ~/.ssh/github_actions_key > /tmp/github_actions_key.pub
+          echo "=== Derived public key ==="
+          cat /tmp/github_actions_key.pub
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Disable strict host checking
+      - name: Disable strict host checking for this run
         run: |
-          echo -e "Host *\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+          mkdir -p ~/.ssh
+          echo -e "Host *\n\tStrictHostKeyChecking no\n\tUserKnownHostsFile=/dev/null\n" >> ~/.ssh/config
+          chmod 600 ~/.ssh/config
+
+      - name: Install Tailscale and join tailnet
+        id: tailscale_up
+        run: |
+          set -eux
+          sudo apt-get update
+          # Install tailscale (official install script)
+          curl -fsSL https://tailscale.com/install.sh | sudo sh
+          # Start tailscaled with userspace networking to avoid kernel tun requirements
+          sudo tailscaled --tun=userspace-networking --state=/tmp/tailscaled.state &>/tmp/tailscaled.log &
+
+          # small wait for the daemon to start
+          for i in {1..10}; do
+            if sudo tailscale status >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+
+          # Bring the runner onto your tailnet using the auth key secret
+          sudo tailscale up --authkey "${{ secrets.TAILSCALE_AUTH_KEY }}" --hostname=gha-deploy --accept-routes || true
+
+          # Wait for the node to show up in status
+          for i in {1..12}; do
+            sudo tailscale status && break
+            sleep 2
+          done
+
+          echo "tailscale status (local):"
+          sudo tailscale status || true
+        env:
+          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+
+      - name: Tailscale / network debug checks
+        run: |
+          set -eux
+          TARGET="${{ secrets.TAILSCALE_HOST }}"
+
+          echo "Runner Tailscale IPs:"
+          sudo tailscale ip -4 || true
+          sudo tailscale ip -6 || true
+
+          echo "Tailscale status:"
+          sudo tailscale status || true
+
+          echo "Attempting tailscale ping (may require ICMP allowed on remote):"
+          sudo tailscale ping -c 1 "$TARGET" || echo "tailscale ping failed or not permitted"
+
+          echo "Checking TCP connectivity to port 22:"
+          apt-get update -y
+          apt-get install -y --no-install-recommends netcat-openbsd
+          nc -vz -w5 "$TARGET" 22 || echo "nc reports port 22 not reachable"
+
+      - name: Quick SSH test (connectivity + auth)
+        id: ssh_test
+        run: |
+          set -eux
+          TARGET="${{ secrets.TAILSCALE_HOST }}"
+          # Test connecting and running a single command. This will fail if keys/auth are wrong or if unreachable.
+          ssh -i ~/.ssh/github_actions_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 dani@"$TARGET" 'echo "SSH connected as $(whoami) on $(hostname)"; id'
+        continue-on-error: false
 
       - name: Deploy to laptop via SSH
         run: |
-          ssh -i ~/.ssh/github_actions_key dani@${{ secrets.TAILSCALE_HOST }} << 'EOF'
-            cd ~/APPY
+          set -eux
+          ssh -i ~/.ssh/github_actions_key -o StrictHostKeyChecking=no -o ConnectTimeout=15 dani@${{ secrets.TAILSCALE_HOST }} << 'EOF'
+            set -eux
+            cd ~/APPY || exit 1
             git pull
             docker compose down || true
             docker compose up --build -d
           EOF
+
+      - name: Cleanup runner tailscale and secrets
+        if: always()
+        run: |
+          # remove private key and public key file
+          rm -f ~/.ssh/github_actions_key /tmp/github_actions_key.pub
+          # attempt to remove runner from tailnet (best-effort)
+          if command -v tailscale >/dev/null 2>&1; then
+            sudo tailscale down || true
+            # stop tailscaled if possible
+            pkill tailscaled || true
+          fi
