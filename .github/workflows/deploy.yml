@@ -1,4 +1,4 @@
-name: deploy
+name: Deploy via ZeroTier
 
 on:
   push:
@@ -10,110 +10,66 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # ------------------------------
+      # CHECKOUT REPOSITORY
+      # ------------------------------
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Add private key
-        id: add_key
+      # ------------------------------
+      # ADD SSH PRIVATE KEY
+      # ------------------------------
+      - name: Add SSH private key
         run: |
-          set -eux
           mkdir -p ~/.ssh
-          # write private key (do not print it)
-          printf '%s' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/github_actions_key
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/github_actions_key
           chmod 600 ~/.ssh/github_actions_key
-          # Derive and print the public key for verification (safe to show)
-          ssh-keygen -y -f ~/.ssh/github_actions_key > /tmp/github_actions_key.pub
-          echo "=== Derived public key ==="
-          cat /tmp/github_actions_key.pub
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Disable strict host checking for this run
-        run: |
-          mkdir -p ~/.ssh
-          # disable host checking only for CI (avoid prompt)
-          cat >> ~/.ssh/config <<'EOF'
-Host *
-  StrictHostKeyChecking no
-  UserKnownHostsFile=/dev/null
-EOF
-          chmod 600 ~/.ssh/config
+          # Disable strict host checking for this workflow
+          echo -e "Host *\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
 
-      - name: Install Tailscale and join tailnet
-        id: tailscale_up
+      # ------------------------------
+      # INSTALL ZEROTIER ON RUNNER
+      # ------------------------------
+      - name: Install ZeroTier
         run: |
-          set -eux
-          sudo apt-get update -y
-          # Install tailscale (official script)
-          curl -fsSL https://tailscale.com/install.sh | sudo sh
-          # Start tailscaled with userspace networking (works on runners)
-          sudo tailscaled --tun=userspace-networking --state=/tmp/tailscaled.state &>/tmp/tailscaled.log &
-          # wait for the daemon to be responsive
-          for i in {1..12}; do
-            sudo tailscale status >/dev/null 2>&1 && break || sleep 1
+          curl -s https://install.zerotier.com | sudo bash
+
+      # ------------------------------
+      # JOIN ZEROTIER NETWORK
+      # ------------------------------
+      - name: Join ZeroTier Network
+        run: |
+          sudo zerotier-cli join ${{ secrets.ZT_NETWORK_ID }}
+
+          # Wait until runner becomes ONLINE in ZeroTier
+          for i in {1..20}; do
+            STATUS=$(sudo zerotier-cli listnetworks | grep ${{ secrets.ZT_NETWORK_ID }} | awk '{print $4}')
+            if [ "$STATUS" = "OK" ]; then
+              echo "ZeroTier connected!"
+              break
+            fi
+            echo "Waiting for ZeroTier... ($i/20)"
+            sleep 3
           done
-          # Join the tailnet using an auth key (set TAILSCALE_AUTH_KEY in repo secrets)
-          sudo tailscale up --authkey "${{ secrets.TAILSCALE_AUTH_KEY }}" --hostname=gha-deploy --accept-routes || true
-          # Wait for node to appear in status
-          for i in {1..12}; do
-            sudo tailscale status && break || sleep 2
-          done
-          echo "tailscale status (local):"
-          sudo tailscale status || true
-        env:
-          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
 
-      - name: Tailscale / network debug checks
+      # ------------------------------
+      # TEST SSH CONNECTIVITY
+      # ------------------------------
+      - name: Test SSH Connection
         run: |
-          set -eux
-          # sanitize secret to remove trailing newline/CR and extra spaces
-          TARGET="$(echo '${{ secrets.TAILSCALE_HOST }}' | tr -d '\r\n' | xargs)"
-          echo "Target: '$TARGET'"
+          ssh -i ~/.ssh/github_actions_key dani@${{ secrets.ZT_HOST }} "echo 'SSH Connected Successfully!'"
 
-          echo "Runner Tailscale IPs:"
-          sudo tailscale ip -4 || true
-          sudo tailscale ip -6 || true
-
-          echo "Tailscale status:"
-          sudo tailscale status || true
-
-          echo "Attempting tailscale ping (may require ICMP allowed on remote):"
-          sudo tailscale ping -c 1 "$TARGET" || echo "tailscale ping failed or not permitted"
-
-          echo "Checking TCP connectivity to port 22:"
-          sudo apt-get update -y
-          sudo apt-get install -y --no-install-recommends netcat-openbsd
-          nc -vz -w5 "$TARGET" 22 || echo "nc reports port 22 not reachable"
-
-      - name: Quick SSH test (connectivity + auth)
-        id: ssh_test
+      # ------------------------------
+      # DEPLOY APPLICATION
+      # ------------------------------
+      - name: Deploy Application on Laptop
         run: |
-          set -eux
-          TARGET="$(echo '${{ secrets.TAILSCALE_HOST }}' | tr -d '\r\n' | xargs)"
-          # test a single safe command to verify auth and reachability
-          ssh -i ~/.ssh/github_actions_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 dani@"$TARGET" 'echo "SSH OK: $(whoami)@$(hostname)"; id'
-        continue-on-error: false
-
-      - name: Deploy to laptop via SSH
-        run: |
-          set -eux
-          TARGET="$(echo '${{ secrets.TAILSCALE_HOST }}' | tr -d '\r\n' | xargs)"
-          ssh -i ~/.ssh/github_actions_key -o StrictHostKeyChecking=no -o ConnectTimeout=15 dani@"$TARGET" << 'EOF'
-            set -eux
-            cd ~/APPY || exit 1
+          ssh -i ~/.ssh/github_actions_key dani@${{ secrets.ZT_HOST }} << 'EOF'
+            set -e
+            cd ~/APPY
             git pull
             docker compose down || true
             docker compose up --build -d
+            echo "🚀 Deployment complete!"
           EOF
-
-      - name: Cleanup runner tailscale and secrets
-        if: always()
-        run: |
-          set -eux || true
-          # remove private/public key files from runner
-          rm -f ~/.ssh/github_actions_key /tmp/github_actions_key.pub || true
-          # best-effort teardown of tailscale on runner
-          if command -v tailscale >/dev/null 2>&1; then
-            sudo tailscale down || true
-            sudo pkill tailscaled || true
-          fi
