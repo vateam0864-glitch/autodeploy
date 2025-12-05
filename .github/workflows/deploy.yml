@@ -1,75 +1,43 @@
-name: Deploy via ZeroTier
+name: deploy
 
 on:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # ------------------------------
-      # CHECKOUT REPOSITORY
-      # ------------------------------
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # ------------------------------
-      # ADD SSH PRIVATE KEY
-      # ------------------------------
-      - name: Add SSH private key
+      - name: Add private key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/github_actions_key
-          chmod 600 ~/.ssh/github_actions_key
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
 
-          # Disable strict host checking for this workflow
-          echo -e "Host *\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+      - name: Disable host key checking
+        run: |
+          echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
 
-      # ------------------------------
-      # INSTALL ZEROTIER ON RUNNER
-      # ------------------------------
       - name: Install ZeroTier
         run: |
           curl -s https://install.zerotier.com | sudo bash
+          sudo systemctl start zerotier-one
 
-      # ------------------------------
-      # JOIN ZEROTIER NETWORK
-      # ------------------------------
-      - name: Join ZeroTier Network
+      - name: Join ZeroTier network
         run: |
-          sudo zerotier-cli join ${{ secrets.ZT_NETWORK_ID }}
+          sudo zerotier-cli join ${{ secrets.ZT_NETWORK }}
+          sleep 10
+          sudo zerotier-cli listnetworks
 
-          # Wait until runner becomes ONLINE in ZeroTier
-          for i in {1..20}; do
-            STATUS=$(sudo zerotier-cli listnetworks | grep ${{ secrets.ZT_NETWORK_ID }} | awk '{print $4}')
-            if [ "$STATUS" = "OK" ]; then
-              echo "ZeroTier connected!"
-              break
-            fi
-            echo "Waiting for ZeroTier... ($i/20)"
-            sleep 3
-          done
-
-      # ------------------------------
-      # TEST SSH CONNECTIVITY
-      # ------------------------------
-      - name: Test SSH Connection
+      - name: Deploy via SSH
         run: |
-          ssh -i ~/.ssh/github_actions_key dani@${{ secrets.ZT_HOST }} "echo 'SSH Connected Successfully!'"
-
-      # ------------------------------
-      # DEPLOY APPLICATION
-      # ------------------------------
-      - name: Deploy Application on Laptop
-        run: |
-          ssh -i ~/.ssh/github_actions_key dani@${{ secrets.ZT_HOST }} << 'EOF'
-            set -e
+          ssh -i ~/.ssh/id_rsa dani@${{ secrets.ZT_HOST_IP }} << 'EOF'
             cd ~/APPY
             git pull
             docker compose down || true
             docker compose up --build -d
-            echo "🚀 Deployment complete!"
           EOF
