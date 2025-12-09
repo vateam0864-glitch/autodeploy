@@ -10,6 +10,7 @@ print("hey how are you")  # This will show when container starts
 print("this is app1")
 print("this is app1 with func")
 print("NEW UPDATE SUCCESSFUL!!!")
+print("new 1 ")
 
 
 if __name__ == '__main__':
