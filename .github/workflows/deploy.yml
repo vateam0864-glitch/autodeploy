@@ -2,7 +2,7 @@ name: Deploy to EC2
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   deploy:
@@ -19,7 +19,7 @@ jobs:
         chmod 600 ~/.ssh/ec2key
         echo -e "Host *\n    StrictHostKeyChecking no" > ~/.ssh/config
 
-    - name: Deploy to EC2 + Show Logs
+    - name: Deploy to EC2 + Logs
       run: |
         ssh -i ~/.ssh/ec2key ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
           cd ~/APPY
@@ -31,16 +31,16 @@ jobs:
           echo "----- Stopping old containers -----"
           docker compose down --remove-orphans
 
-          echo "----- Rebuilding fresh images -----"
+          echo "----- Rebuilding images (no cache) -----"
           docker compose build --no-cache
 
           echo "----- Starting containers -----"
           docker compose up -d
 
-          echo "----- Docker Status -----"
+          echo "----- Running containers -----"
           docker ps
 
-          echo "----- Last 40 logs from app1 -----"
+          echo "----- app1 last logs -----"
           docker compose logs app1 --tail 40
 
           echo "===== DEPLOY DONE ====="
