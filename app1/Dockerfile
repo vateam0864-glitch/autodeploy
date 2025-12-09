@@ -2,7 +2,7 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# force rebuild
+# Force rebuild when code changes
 ARG CACHEBUST=1
 
 COPY app.py /app/

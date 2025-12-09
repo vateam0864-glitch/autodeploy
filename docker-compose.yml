@@ -1,13 +1,14 @@
 services:
   app1:
-    build: ./app1
+    build:
+      context: ./app1
     ports:
       - "5001:5001"
     restart: unless-stopped
 
   app2:
-    build: ./app2
+    build:
+      context: ./app2
     ports:
       - "5002:5002"
     restart: unless-stopped
-
