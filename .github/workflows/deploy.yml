@@ -22,7 +22,6 @@ jobs:
     - name: Deploy to EC2 + Logs
       run: |
         ssh -i ~/.ssh/ec2key ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
-
           cd ~/APPY
 
           echo "----- Pulling latest code -----"
@@ -30,18 +29,15 @@ jobs:
           git reset --hard origin/main
 
           echo "----- Stopping old containers -----"
-          docker compose down --remove-orphans || true
+          docker compose down --remove-orphans
 
-          echo "----- Forcing rebuild with CACHEBUST -----"
+          echo "----- FORCING REBUILD WITH CACHEBUST -----"
           export CACHEBUST=$(date +%s)
-
           docker compose build --no-cache
 
           echo "----- Starting containers -----"
           docker compose up -d
 
-          echo "----- Last logs for app1 -----"
+          echo "----- Last 50 logs from app1 -----"
           docker compose logs app1 --tail 50
-
-          echo "===== DEPLOY DONE ====="
         EOF
