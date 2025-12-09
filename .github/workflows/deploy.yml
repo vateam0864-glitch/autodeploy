@@ -1,9 +1,8 @@
-name: deploy
+name: Deploy to EC2
 
 on:
   push:
-    branches:
-      - main
+    branches: ["main"]
 
 jobs:
   deploy:
@@ -13,32 +12,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Add SSH private key
+      - name: Setup SSH private key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/github_actions_key
-          chmod 600 ~/.ssh/github_actions_key
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ec2key
+          chmod 600 ~/.ssh/ec2key
 
-      - name: Disable host key checking
+      - name: Disable Host Key Checking
         run: |
-          echo -e "Host *\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+          echo "Host *" > ~/.ssh/config
+          echo "  StrictHostKeyChecking no" >> ~/.ssh/config
 
-      - name: Install ZeroTier
+      - name: Deploy to EC2
         run: |
-          curl -s https://install.zerotier.com | sudo bash
-          sudo systemctl start zerotier-one
-
-      - name: Join ZeroTier network
-        run: |
-          sudo zerotier-cli join "${{ secrets.ZT_NETWORK }}"
-          sleep 10
-          sudo zerotier-cli listnetworks
-
-      - name: Deploy via SSH
-        run: |
-          ssh -i ~/.ssh/github_actions_key dani@${{ secrets.ZT_IP }} << 'EOF'
-          cd ~/APPY
-          git pull
-          docker compose down || true
-          docker compose up --build -d
+          ssh -i ~/.ssh/ec2key ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
+            cd ~/APPY
+            git pull
+            docker compose down || true
+            docker compose up --build -d
           EOF
