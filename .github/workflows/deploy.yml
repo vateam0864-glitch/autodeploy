@@ -19,7 +19,7 @@ jobs:
         chmod 600 ~/.ssh/ec2key
         echo -e "Host *\n    StrictHostKeyChecking no" > ~/.ssh/config
 
-        - name: Deploy to EC2 + Show Logs
+    - name: Deploy to EC2 + Show Logs
       run: |
         ssh -i ~/.ssh/ec2key ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
           cd ~/APPY
