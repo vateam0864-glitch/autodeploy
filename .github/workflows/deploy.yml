@@ -24,20 +24,23 @@ jobs:
         ssh -i ~/.ssh/ec2key ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
           cd ~/APPY
 
-          echo "----- Fetch latest code -----"
+          echo "----- PULLING LATEST CODE -----"
           git fetch --all
           git reset --hard origin/main
 
-          echo "----- Stop containers -----"
+          echo "----- STOPPING OLD CONTAINERS -----"
           docker compose down --remove-orphans
 
-          echo "----- REBUILD (NO CACHE) -----"
+          echo "----- REBUILDING IMAGES -----"
           export CACHEBUST=$(date +%s)
-          docker compose build --no-cache
+          docker compose build
 
-          echo "----- Start containers -----"
+          echo "----- STARTING APPS -----"
           docker compose up -d
 
-          echo "----- Logs (app1) -----"
+          echo "----- CHECKING STATUS -----"
+          docker ps
+
+          echo "----- APP1 LOGS -----"
           docker compose logs app1 --tail 50
         EOF
