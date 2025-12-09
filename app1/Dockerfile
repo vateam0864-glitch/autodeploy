@@ -1,9 +1,6 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 WORKDIR /app
-
-# Force rebuild when code changes
-ARG CACHEBUST=1
 
 COPY app.py /app/
 
