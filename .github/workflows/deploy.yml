@@ -1,51 +1,39 @@
-name: Auto Deploy to EC2
+name: Deploy to EC2
 
 on:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Setup SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ec2key
-          chmod 600 ~/.ssh/ec2key
-          echo -e "Host *\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+    - name: Setup SSH key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ec2key
+        chmod 600 ~/.ssh/ec2key
+        echo -e "Host *\n    StrictHostKeyChecking no" > ~/.ssh/config
 
-      - name: Deploy to EC2 + Show Code + Logs
-        run: |
-          ssh -i ~/.ssh/ec2key ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
-            echo "===== DEPLOY STARTED ====="
+    - name: Deploy to EC2 + Show Logs
+      run: |
+        ssh -i ~/.ssh/ec2key ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
+          cd ~/APPY
+          git pull
 
-            cd ~/APPY
+          echo "----- Rebuilding Containers -----"
+          docker compose down
+          docker compose up -d --build
 
-            echo "---- Pulling Latest Code ----"
-            git fetch --all
-            git reset --hard origin/main
+          echo "----- Docker Status -----"
+          docker ps
 
-            echo "---- Showing Latest Code (app1/app.py) ----"
-            echo "--------------------------------------------"
-            cat app1/app.py
-            echo "--------------------------------------------"
+          echo "----- Last 40 Lines of app1 Logs -----"
+          docker compose logs app1 --tail 40
 
-            echo "---- Rebuilding Docker ----"
-            docker compose down || true
-            docker compose build --no-cache
-            docker compose up -d
-
-            echo "---- Docker Status ----"
-            docker ps
-
-            echo "---- Showing Last 40 Lines of Logs (app1) ----"
-            docker compose logs app1 --tail 40
-
-            echo "===== DEPLOY COMPLETED SUCCESSFULLY ====="
-EOF
+          echo "===== DEPLOY COMPLETED SUCCESSFULLY ====="
+        EOF
