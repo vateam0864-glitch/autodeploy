@@ -9,6 +9,8 @@ print("hello")  # This will show when container starts
 print("hey how are you")  # This will show when container starts
 print("this is app1")
 print("this is app1 with func")
+print("NEW UPDATE SUCCESSFUL!!!")
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001)

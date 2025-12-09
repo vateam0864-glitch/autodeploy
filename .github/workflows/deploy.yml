@@ -19,28 +19,27 @@ jobs:
         chmod 600 ~/.ssh/ec2key
         echo -e "Host *\n    StrictHostKeyChecking no" > ~/.ssh/config
 
-    - name: Deploy to EC2 + Logs
+    - name: Deploy to EC2 and rebuild cache-busted images
       run: |
         ssh -i ~/.ssh/ec2key ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
+          set -e
           cd ~/APPY
 
-          echo "----- PULLING LATEST CODE -----"
+          echo "----- Pulling latest code -----"
           git fetch --all
           git reset --hard origin/main
 
-          echo "----- STOPPING OLD CONTAINERS -----"
-          docker compose down --remove-orphans
+          echo "----- Stopping old containers -----"
+          docker compose down --remove-orphans || true
 
-          echo "----- REBUILDING IMAGES -----"
+          echo "----- Forcing NO-CACHE rebuild -----"
           export CACHEBUST=$(date +%s)
-          docker compose build
 
-          echo "----- STARTING APPS -----"
+          docker compose build --no-cache
+
+          echo "----- Starting containers -----"
           docker compose up -d
 
-          echo "----- CHECKING STATUS -----"
-          docker ps
-
-          echo "----- APP1 LOGS -----"
+          echo "----- Showing app1 logs -----"
           docker compose logs app1 --tail 50
         EOF
